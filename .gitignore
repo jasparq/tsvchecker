@@ -1,0 +1,9 @@
+/build
+/dist
+/Printing sensor readings TSV-01 (F70-04).pdf
+/Printing sensor readings TSV-03 (LAB AMBNT).pdf
+/Printing sensor readings TSV-05 (RFG-01).pdf
+/Printing sensor readings TSV-11 (F70-02).pdf
+/tsvcheckerbase.py
+/tsvscriptlord.spec
+/venv
