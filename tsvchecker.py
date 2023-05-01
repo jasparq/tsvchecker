@@ -11,6 +11,12 @@ from collections import defaultdict
 class DirSignal(QObject):
     pathChanged=pyqtSignal(str)
 
+class processingThread(QThread):
+    finished=pyqtSignal()
+    progress=pyqtSignal(int)
+
+    def run(self):
+        pass
 class MyApp(QWidget):
     def __init__(self):
         super().__init__()
@@ -90,6 +96,7 @@ class MyApp(QWidget):
             file_count=len([f for f in os.listdir(self.folder_input) if f.endswith(format)])
             self.file_count=file_count 
 
+            print('File Count '+str(file_count))
 
             # logic for progress bar
             self.progress_bar.setMaximum(file_count)
@@ -98,6 +105,7 @@ class MyApp(QWidget):
             count=0
 
             for filename in os.listdir(self.folder_input):
+                print(filename)
                 filepath=os.path.join(self.folder_input, filename)
                 if os.path.isfile(filepath) and filename.endswith('.pdf') and 'Printing sensor readings' in filename:
                     with open(filepath, 'rb') as file:
@@ -121,6 +129,7 @@ class MyApp(QWidget):
 
                             for line in lines:
                                 data=line.strip()
+                                print(data)
 
                                 if ":" in data and ('Print' not in data) and 'Signature' not in data:
                                     datelist.append(datetime.strptime(data,'%m/%d/%Y %H:%M'))
@@ -133,7 +142,7 @@ class MyApp(QWidget):
                                 if diff>timedelta(minutes=10):
                                     if datelist[i].strftime('%m/%d/%Y %H:%M') not in errordates:
                                         errordates.append(datelist[i].strftime('%m/%d/%Y %H:%M'))
-
+                        print(tempdatedict)
                         for date in errordates:
                             self.missed_dates_text.append(filename+': '+date)
 
