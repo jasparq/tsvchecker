@@ -1,27 +1,23 @@
 import sys, os
-from PyQt6.QtCore import pyqtSignal, QObject
+from PyQt6.QtCore import pyqtSignal, QObject, QThread
 from PyQt6.QtWidgets import QApplication, QWidget, QLineEdit, QPushButton, QTextEdit, QPushButton, QVBoxLayout, QGridLayout, QLabel, QFileDialog, QProgressBar
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QPixmap
 
 from pdfreader import SimplePDFViewer
 import time
 from datetime import datetime, timedelta
 from collections import defaultdict
 
+basedir=os.path.dirname(__file__)
+
 class DirSignal(QObject):
     pathChanged=pyqtSignal(str)
 
-class processingThread(QThread):
-    finished=pyqtSignal()
-    progress=pyqtSignal(int)
-
-    def run(self):
-        pass
 class MyApp(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('TSV SCRIPTLORD')
-        self.setWindowIcon(QIcon('qlogo.png'))
+        self.setWindowIcon(QIcon(QPixmap(os.path.join(basedir,'static/qlogoico.ico'))))
 
         self.setStyleSheet('''
             QWidget {
@@ -73,7 +69,7 @@ class MyApp(QWidget):
 
         # signal catcher when getDir finishes
         self.dir_signal=DirSignal()
-        self.dir_signal.pathChanged.connect(lambda:self.getMissedDates('F70'))
+        #self.dir_signal.pathChanged.connect(lambda:self.getMissedDates('F70'))
 
         # missed reading results box
         self.missed_dates_label=QLabel('Missed Readings:')
@@ -90,22 +86,53 @@ class MyApp(QWidget):
         self.progress_bar=QProgressBar()
         self.layout.addWidget(self.progress_bar,4,0,1,2)
 
-    def getMissedDates(self,type):
+        
+    
+    def setMaxProgress(self, value):
+        self.progress_bar.setMaximum(value)
+
+    def updateProgressBar(self,value):
+        self.progress_bar.setValue(value)
+
+    def getDir(self):
+        folder_input=QFileDialog.getExistingDirectory(
+            parent=self,
+            caption='Select Folder',
+            directory=os.getcwd()
+        )
+        self.folder_input=folder_input
+        print(folder_input)
+        self.dir_signal.pathChanged.emit(folder_input)
+        self.processThread=ProcessingThread(folder_input,self.missed_dates_text,self.excursion_text)
+        self.processThread.progress.connect(self.updateProgressBar)
+        self.processThread.maxprogress.connect(self.setMaxProgress)
+        self.processThread.start()
+
+class ProcessingThread(QThread):
+    progress=pyqtSignal(int)
+    maxprogress=pyqtSignal(int)
+
+    def __init__(self, folder_input, missed_dates_text, excursion_text):
+        super().__init__()
+        self.folder_input=folder_input
+        self.missed_dates_text=missed_dates_text
+        self.excursion_text=excursion_text
+
+    def run(self):
         format='.pdf'   #checks for only pdf files in the directory
         if self.folder_input is not None and self.folder_input!='' :
             file_count=len([f for f in os.listdir(self.folder_input) if f.endswith(format)])
             self.file_count=file_count 
 
-            print('File Count '+str(file_count))
+            #print('File Count '+str(file_count))
 
             # logic for progress bar
-            self.progress_bar.setMaximum(file_count)
-            self.progress_bar.setValue(0)
+            self.maxprogress.emit(file_count)
 
             count=0
-
+            self.progress.emit(count)
             for filename in os.listdir(self.folder_input):
-                print(filename)
+                #print(filename)
                 filepath=os.path.join(self.folder_input, filename)
                 if os.path.isfile(filepath) and filename.endswith('.pdf') and 'Printing sensor readings' in filename:
                     with open(filepath, 'rb') as file:
@@ -124,12 +151,12 @@ class MyApp(QWidget):
 
                         # loop through each page and extract the text
                         for canvas in viewer:
-                            cyclecount=0                       
+                            #cyclecount=0                       
                             lines=canvas.strings[12:]
 
                             for line in lines:
                                 data=line.strip()
-                                print(data)
+                                #print(data)
 
                                 if ":" in data and ('Print' not in data) and 'Signature' not in data:
                                     datelist.append(datetime.strptime(data,'%m/%d/%Y %H:%M'))
@@ -142,7 +169,7 @@ class MyApp(QWidget):
                                 if diff>timedelta(minutes=10):
                                     if datelist[i].strftime('%m/%d/%Y %H:%M') not in errordates:
                                         errordates.append(datelist[i].strftime('%m/%d/%Y %H:%M'))
-                        print(tempdatedict)
+                        #print(tempdatedict)
                         for date in errordates:
                             self.missed_dates_text.append(filename+': '+date)
 
@@ -160,14 +187,15 @@ class MyApp(QWidget):
                             type='ARCH TEMP'
                         elif 'ARCH Rh' in filename:
                             type='ARCH Rh'
-
+                        print(filename)
+                        print(type)
                         match type:
                             case 'F70':
                                 high=-60
                                 low=-87
                             case 'F20':
                                 high=-10
-                                low:-30
+                                low=-30
                             case 'RFG':
                                 high=8
                                 low=2
@@ -186,7 +214,11 @@ class MyApp(QWidget):
                                 
                         for timepoint, temp in tempdatedict.items():
                             temp=float(str(temp).split(' ')[0])
+                            print(temp)
                             if temp>high or temp<low:
+                                print('Temp: ' +str(temp))
+                                print('High: '+str(high))
+                                print('Low: '+str(low))
                                 if not excursion:
                                     excursion_count+=1
                                 excursion=1
@@ -205,21 +237,9 @@ class MyApp(QWidget):
                         for key, reading in excursion_dict.items():
                             self.excursion_text.append(filename+': '+str(reading))
 
-                count+=1
-                self.progress_bar.setValue(count)
-            print(self.file_count)
-
-    def getDir(self):
-        folder_input=QFileDialog.getExistingDirectory(
-            parent=self,
-            caption='Select Folder',
-            directory=os.getcwd()
-        )
-        self.folder_input=folder_input
-        print(folder_input)
-        self.dir_signal.pathChanged.emit(folder_input)
-
-    
+                    count+=1
+                    self.progress.emit(count)
+                    print(self.file_count)    
 
 #app=QApplication([])
 app=QApplication(sys.argv)
